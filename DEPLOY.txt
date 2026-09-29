@@ -1,0 +1,14 @@
+CULTIVA SECURISE — DEPLOIEMENT GITHUB PAGES
+
+Remplacer le contenu du depot par les fichiers/dossiers suivants a la racine :
+- index.html
+- styles.css
+- app.js
+- .nojekyll
+- .well-known/security.txt
+- SECURITY_AUDIT.md (optionnel mais recommande)
+
+Important : ne pas uploader uniquement index.html. La version securisee separe volontairement HTML, CSS et JavaScript afin de pouvoir appliquer une Content Security Policy stricte sur les scripts.
+
+Dans Settings > Pages, conserver : Deploy from a branch / main / root.
+Dans Settings > Pages, verifier aussi que HTTPS est active/enforce si l'option est affichee.
