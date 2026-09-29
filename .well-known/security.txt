@@ -1,0 +1,3 @@
+Contact: https://github.com/datogaming42/Cultiva/issues
+Preferred-Languages: fr, en
+Canonical: https://datogaming42.github.io/Cultiva/.well-known/security.txt
