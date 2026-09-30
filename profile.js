@@ -9,6 +9,7 @@ let cloudSession=null;
 let cloudSyncTimer=null;
 let cloudSyncing=false;
 let authMode='login';
+let accountGate=true;
 
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -83,7 +84,12 @@ async function signUp(email,password,username){
 async function signOut(){
   const s=await ensureSession();
   if(s){try{await api('/auth/v1/logout',{method:'POST',token:s.access_token})}catch{}}
-  saveSession(null); setCloudStatus('Mode local'); renderAccountView();
+  saveSession(null);
+  setCloudStatus('Connexion requise');
+  setAccountGate(true);
+  authMode='login';
+  renderAccountView();
+  openAccount(true);
 }
 
 async function dbGet(table,query=''){
@@ -174,19 +180,52 @@ function scheduleCloudSync(delay=900){
 async function afterLogin(){
   const s=await ensureSession(); if(!s?.user)return;
   setCloudStatus('Connexion…','busy');
-  const exists=await cloudProfileExists(s.user.id);
-  if(exists)await loadCloudToLocal(); else await uploadLocalToCloud();
-  accountLabel(); renderAccountView();
+  const existed=await cloudProfileExists(s.user.id);
+  const hadLocal=!!localProfile();
+  if(existed) await loadCloudToLocal();
+  else if(hadLocal) await uploadLocalToCloud();
+
+  setAccountGate(false);
+  accountLabel();
+  renderAccountView();
+  closeAccount();
+
+  // Profil déjà évalué (cloud ou migration locale) : accès direct à l’app.
+  // Compte neuf : on affiche le Level Check seulement après authentification.
+  if(existed || hadLocal){
+    document.querySelector('#onboarding')?.classList.add('hidden');
+    try{renderProfile()}catch{}
+  }else{
+    document.querySelector('#onboarding')?.classList.remove('hidden');
+    const intro=$('#assessmentIntro'), quiz=$('#assessmentQuiz'), result=$('#assessmentResult');
+    if(intro)intro.style.display='block';
+    if(quiz)quiz.style.display='none';
+    if(result)result.style.display='none';
+  }
 }
 
-function openAccount(){
+function setAccountGate(required){
+  accountGate=!!required;
+  const modal=$('#accountModal');
+  const close=modal?.querySelector('[data-account-action="close"]');
+  if(close)close.style.display=accountGate?'none':'';
+  modal?.classList.toggle('account-required',accountGate);
+}
+function openAccount(required=false){
+  if(required)setAccountGate(true);
   $('#accountModal')?.classList.add('show');
   renderAccountView();
 }
-function closeAccount(){ $('#accountModal')?.classList.remove('show') }
+function closeAccount(){
+  if(accountGate && !cloudSession?.user)return;
+  $('#accountModal')?.classList.remove('show');
+}
 function renderAccountView(){
   const guest=$('#authGuest'), signed=$('#authSigned'); if(!guest||!signed)return;
+  const title=$('#accountTitle'), lead=$('#accountLead');
   if(cloudSession?.user){
+    if(title)title.textContent='Ton profil';
+    if(lead)lead.textContent='Ta progression Cultiva est liée à ce compte';
     guest.style.display='none'; signed.style.display='block';
     const p=localProfile()||{};
     $('#profileName').textContent=cloudSession.user.user_metadata?.username||cloudSession.user.email?.split('@')[0]||'Cultivator';
@@ -195,14 +234,18 @@ function renderAccountView(){
     $('#profileStreak').textContent=`${Number(p.streak||0)} j`;
     $('#profileBest').textContent=`${Number(p.bestStreak||0)} j`;
   }else{
+    if(title)title.textContent=authMode==='signup'?'Crée ton profil':'Connecte-toi';
+    if(lead)lead.textContent='Compte requis avant le Level Check';
     guest.style.display='block'; signed.style.display='none';
     updateAuthMode();
   }
 }
 function updateAuthMode(){
   document.querySelectorAll('.auth-tab').forEach(x=>x.classList.toggle('active',x.dataset.mode===authMode));
+  const title=$('#accountTitle'); if(title&&!cloudSession?.user)title.textContent=authMode==='signup'?'Crée ton profil':'Connecte-toi';
   const signup=$('#usernameField'); if(signup)signup.style.display=authMode==='signup'?'block':'none';
   const submit=$('#authSubmit'); if(submit)submit.textContent=authMode==='signup'?'Créer mon profil':'Se connecter';
+  const pass=$('#authPassword'); if(pass)pass.autocomplete=authMode==='signup'?'new-password':'current-password';
   setAuthMessage('');
 }
 
@@ -213,8 +256,10 @@ async function submitAuth(){
   try{
     if(authMode==='signup'){
       const r=await signUp(email,pass,username);
-      if(!r.confirmed){setAuthMessage('Compte créé ✦ Confirme ton email, puis reviens te connecter','ok')}
-      else{setAuthMessage('Profil créé ✓','ok');}
+      if(!r.confirmed){
+        authMode='login'; updateAuthMode();
+        setAuthMessage('Compte créé ✦ Confirme ton email, puis connecte-toi ici','ok');
+      }else{setAuthMessage('Profil créé ✓','ok');}
     }else{
       await signIn(email,pass); setAuthMessage('Connecté ✓','ok');
     }
@@ -231,13 +276,25 @@ function bindSyncHooks(){
 }
 
 async function init(){
-  if(!SUPABASE_URL||!SUPABASE_KEY){setCloudStatus('Profil cloud non configuré','warn');return}
+  if(!SUPABASE_URL||!SUPABASE_KEY){
+    setCloudStatus('Profil cloud non configuré','warn');
+    setAccountGate(true); openAccount(true); return;
+  }
   bindSyncHooks();
   cloudSession=readSession();
   if(cloudSession){
-    try{await ensureSession(); if(cloudSession)await afterLogin()}catch{setCloudStatus('Mode local','warn')}
+    try{
+      await ensureSession();
+      if(cloudSession){await afterLogin();return;}
+    }catch{saveSession(null)}
   }
-  accountLabel(); renderAccountView();
+
+  // Aucun accès au Level Check tant qu’un compte n’est pas authentifié.
+  setAccountGate(true);
+  authMode=localProfile()?'login':'signup';
+  accountLabel();
+  renderAccountView();
+  openAccount(true);
 }
 
 document.addEventListener('click',async e=>{
