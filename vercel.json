@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/deep-dive.js": {
+      "maxDuration": 10
+    }
+  }
+}
