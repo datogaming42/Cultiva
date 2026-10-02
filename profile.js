@@ -272,7 +272,7 @@ function bindSyncHooks(){
     const fn=window[name]; if(typeof fn!=='function')return;
     window[name]=function(...args){const r=fn.apply(this,args);scheduleCloudSync();return r};
   };
-  ['saveProfile','recordMistake','touchActivity','updateMastery','markSeen'].forEach(wrap);
+  ['saveProfile','recordMistake','resolveReviewMistake','touchActivity','updateMastery','markSeen'].forEach(wrap);
 }
 
 async function init(){
