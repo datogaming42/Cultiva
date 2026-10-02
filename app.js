@@ -112,6 +112,17 @@ function startReviewSession(){
   const items=getReviewItems();
   reviewQuizSession=shuffled(items.map(x=>({id:x.id,cat:x.cat,q:x.q})));reviewQuizIndex=0;reviewQuizCorrect=0;reviewQuizLocked=false;reviewQuizFinished=false;reviewQuizDisplay=[];
 }
+function openReviewCenter(){
+  const modal=document.querySelector('#reviewModal');if(!modal)return;
+  modal.classList.add('show');modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('review-open');
+  renderReviewPanel();
+}
+function closeReviewCenter(){
+  const modal=document.querySelector('#reviewModal');if(!modal)return;
+  modal.classList.remove('show');modal.setAttribute('aria-hidden','true');
+  document.body.classList.remove('review-open');
+}
 function setReviewTab(tab){
   reviewTab=tab==='quiz'?'quiz':'cards';
   if(reviewTab==='quiz'&&!reviewQuizSession.length&&!reviewQuizFinished)startReviewSession();
@@ -138,7 +149,7 @@ function reviewAnswer(choice){
   if(ok){reviewQuizCorrect++;resolveReviewMistake(item.id,false)}
   updateMastery(item.cat,ok,q[4]||2,true);
   const feedback=document.querySelector('#reviewQuizFeedback');if(feedback){feedback.className='review-quiz-feedback show '+(ok?'good':'bad');feedback.innerHTML=ok?'<b>✓ Maîtrisé</b><p>Cette erreur quitte ta pile Retravailler</p>':`<b>↺ Encore à revoir</b><p>Le repère à retenir est <strong>${escHtml(correct)}</strong></p>`}
-  const count=document.querySelector('#reviewCount');if(count)count.textContent=getReviewItems().length;
+  const remaining=getReviewItems().length;document.querySelectorAll('[data-review-count]').forEach(el=>el.textContent=remaining);const sub=document.querySelector('#reviewSubtitle');if(sub)sub.textContent=remaining?`${remaining} savoir${remaining>1?'s':''} à consolider`:'Pile vidée · bien joué';
   const next=document.querySelector('#reviewQuizNext');if(next){next.style.display='block';next.textContent=reviewQuizIndex===reviewQuizSession.length-1?'Voir le bilan →':'Suivant →'}
 }
 function nextReviewQuestion(){
@@ -149,11 +160,14 @@ function nextReviewQuestion(){
 function restartReviewQuiz(){startReviewSession();reviewTab='quiz';renderReviewPanel()}
 function renderReviewPanel(){
   const panel=document.querySelector('#reviewPanel');if(!panel)return;const items=getReviewItems(),count=items.length;
-  const countEl=document.querySelector('#reviewCount'),sub=document.querySelector('#reviewSubtitle');if(countEl)countEl.textContent=count;if(sub)sub.textContent=count?`${count} savoir${count>1?'s':''} à consolider`:'Pile vidée · bien joué';
+  document.querySelectorAll('[data-review-count]').forEach(el=>el.textContent=count);
+  const sub=document.querySelector('#reviewSubtitle');if(sub)sub.textContent=count?`${count} savoir${count>1?'s':''} à consolider`:'Pile vidée · bien joué';
+  const openBtn=panel.querySelector('[data-action="open-review"]');if(openBtn){openBtn.textContent=count?'Ouvrir →':'Voir l’espace →'}
   const cardsTab=document.querySelector('#reviewCardsTab'),quizTab=document.querySelector('#reviewQuizTab');
   if(cardsTab){cardsTab.classList.toggle('active',reviewTab==='cards');cardsTab.setAttribute('aria-selected',reviewTab==='cards'?'true':'false')}
   if(quizTab){quizTab.classList.toggle('active',reviewTab==='quiz');quizTab.setAttribute('aria-selected',reviewTab==='quiz'?'true':'false');quizTab.disabled=!count&&!reviewQuizSession.length&&!reviewQuizFinished}
-  if(reviewTab==='quiz')renderReviewQuiz();else renderReviewCards(items);
+  const content=document.querySelector('#reviewContent');
+  if(content){if(reviewTab==='quiz')renderReviewQuiz();else renderReviewCards(items)}
 }
 function dayDiff(a,b){const A=new Date(a+'T00:00:00'),B=new Date(b+'T00:00:00');return Math.round((B-A)/86400000)}
 function touchActivity(answerInc=0,sessionInc=0){let p=getProfile();if(!p)return;const today=new Date().toISOString().slice(0,10);p.activity=p.activity||{};p.activity[today]=p.activity[today]||{answers:0,sessions:0,general:p.general||0};p.activity[today].answers+=answerInc;p.activity[today].sessions+=sessionInc;p.activity[today].general=p.general||0;if(p.lastActive!==today){const gap=p.lastActive?dayDiff(p.lastActive,today):99;p.streak=gap===1?(p.streak||0)+1:1;p.bestStreak=Math.max(p.bestStreak||0,p.streak);p.lastActive=today}else{p.streak=p.streak||1;p.bestStreak=Math.max(p.bestStreak||0,p.streak)}storage.setItem('cultivaAssessment',JSON.stringify(p))}
@@ -307,6 +321,8 @@ document.addEventListener('click',e=>{
   else if(action==='scroll-categories')document.querySelector('#categories')?.scrollIntoView({behavior:'smooth'});
   else if(action==='open-daily')openDailyKnowledge();
   else if(action==='close-daily')closeDailyKnowledge();
+  else if(action==='open-review')openReviewCenter();
+  else if(action==='close-review')closeReviewCenter();
   else if(action==='review-tab')setReviewTab(el.dataset.tab||'cards');
   else if(action==='review-answer')reviewAnswer(Number(el.dataset.index));
   else if(action==='review-next')nextReviewQuestion();
@@ -325,3 +341,5 @@ document.addEventListener('click',e=>{
 initAssessment();
 document.querySelector('#modal').addEventListener('click' ,e=>{if(e.target.id==='modal')closeQuiz()});
 document.querySelector('#dailyModal').addEventListener('click',e=>{if(e.target.id==='dailyModal')closeDailyKnowledge()});
+document.querySelector('#reviewModal')?.addEventListener('click',e=>{if(e.target.id==='reviewModal')closeReviewCenter()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.querySelector('#reviewModal')?.classList.contains('show'))closeReviewCenter()});
