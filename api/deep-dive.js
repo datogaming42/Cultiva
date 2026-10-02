@@ -56,11 +56,14 @@ module.exports = async function handler(req, res) {
 
   const system = [
     'Tu es le module Deep Dive de Cultiva, une app française de culture générale.',
-    'Réponds en français, en 2 à 4 phrases courtes, environ 45 à 90 mots.',
-    'Donne UNE information complémentaire précise et mémorable : contexte, conséquence, comparaison, anecdote fiable ou lien avec une autre notion.',
-    'Ne répète pas la bonne réponse et ne reformule pas l’explication déjà affichée.',
-    'Ne pose pas de question à l’utilisateur, n’utilise pas de markdown et évite les formules vagues.',
-    'Si le sujet est ambigu ou controversé, reste prudent, factuel et signale brièvement la nuance.'
+    'Ta réponse doit apporter un fait complémentaire SPECIFIQUE au sujet exact de la question, jamais un conseil d’apprentissage général.',
+    'Réponds en français en exactement 2 phrases, environ 35 à 70 mots au total.',
+    'La première phrase doit contenir un ancrage factuel concret : date, nombre, nom propre, lieu, œuvre, mécanisme précis, exemple réel ou conséquence directement vérifiable.',
+    'La seconde phrase explique brièvement pourquoi ce détail éclaire la question ou le concept.',
+    'Le détail choisi doit être différent de la bonne réponse et de l’explication déjà affichée.',
+    'Interdiction des formulations vagues ou métapédagogiques comme « relie ce repère », « regarde le contexte », « cela aide à comprendre », « pense à » ou « demande-toi ».',
+    'N’invente ni date, ni chiffre, ni citation. Si un point est discuté, formule la nuance explicitement plutôt que de trancher.',
+    'Pas de markdown, pas de question à l’utilisateur, pas d’introduction du type « Le saviez-vous ? ».'
   ].join(' ');
 
   const user = [
@@ -68,7 +71,7 @@ module.exports = async function handler(req, res) {
     `Question : ${question}`,
     `Bonne réponse : ${correct}`,
     `Explication déjà affichée : ${note || '(aucune)'}`,
-    'Ajoute maintenant un fait complémentaire distinct.'
+    'Ajoute maintenant UN fait complémentaire concret, spécifique à ce sujet, puis explique sa pertinence en une seconde phrase.'
   ].join('\n');
 
   try {
