@@ -81,18 +81,59 @@ function reviewQuestionId(cat,q){return `${cat}|${q&&q[0]||''}|${q&&q[1]&&q[1][q
 function pushRecentMistake(list,cat,q){const id=reviewQuestionId(cat,q),item={id,cat,q,at:Date.now()};return [item,...(list||[]).filter(x=>x&&x.id!==id)].slice(0,20)}
 function recordMistake(cat,q){let p=getProfile();if(!p)return;p.wrongHistory=pushRecentMistake(p.wrongHistory,cat,q);storage.setItem('cultivaAssessment',JSON.stringify(p));renderReviewPanel()}
 function getReviewItems(){const p=getProfile();return ((p&&p.wrongHistory)||[]).filter(x=>x&&x.cat&&Array.isArray(x.q)).slice(0,20)}
-let reviewTab='cards',reviewQuizSession=[],reviewQuizIndex=0,reviewQuizCorrect=0,reviewQuizLocked=false,reviewQuizFinished=false,reviewQuizDisplay=[];
+let reviewTab='cards',reviewQuizSession=[],reviewQuizIndex=0,reviewQuizCorrect=0,reviewQuizLocked=false,reviewQuizFinished=false,reviewQuizStarted=false,reviewQuizDisplay=[];
 function normalizeFactText(value){return String(value||'').replace(/\s+/g,' ').trim()}
 function reviewKnowledge(item){
-  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=normalizeFactText(q[3]);
-  if(!note)return correct?`Le repère à retenir ici est ${correct}.`:'';
-  if(!correct||note.toLocaleLowerCase('fr').includes(correct.toLocaleLowerCase('fr')))return note;
-  return `${note} Le repère à retenir ici est ${correct}.`;
+  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]);
+  if(!correct)return 'Un repère important est à consolider ici.';
+  return `Le savoir clé à mémoriser est ${correct}.`;
+}
+function reviewContext(item){
+  const q=item.q||[],note=normalizeFactText(q[3]),difficulty=Number(q[4])||2;
+  const level=difficulty===1?'un repère fondamental':difficulty===3?'un repère plus avancé':'un repère intermédiaire';
+  if(note)return `${note} Dans cette catégorie, c’est ${level} qui sert de point d’ancrage pour les notions voisines.`;
+  return `Ce savoir fait partie des repères ${difficulty===1?'fondamentaux':difficulty===3?'avancés':'intermédiaires'} de ${item.cat}. Il sert de point d’ancrage pour relier d’autres faits du même thème.`;
+}
+const REVIEW_FACT_CACHE_KEY='cultivaReviewFactsV2';
+const reviewFactLoading=new Set();
+function getReviewFactCache(){try{return JSON.parse(storage.getItem(REVIEW_FACT_CACHE_KEY)||'{}')}catch{return {}}}
+function saveReviewFact(id,text){
+  if(!id||!text)return;const cache=getReviewFactCache();cache[id]=String(text).trim();
+  const entries=Object.entries(cache);if(entries.length>120){for(const [key] of entries.slice(0,entries.length-120))delete cache[key]}
+  storage.setItem(REVIEW_FACT_CACHE_KEY,JSON.stringify(cache));
 }
 function reviewExtra(item){
   const q=item.q||[],exact=assessmentDeepDiveFacts[q[0]];
   if(exact)return exact;
-  return learningTips[item.cat]||'Relie ce savoir à un exemple concret pour le rendre plus facile à rappeler.';
+  return getReviewFactCache()[item.id]||'';
+}
+function updateReviewExtraSlot(item,index,text,state='✨ Fait complémentaire'){
+  const slot=document.querySelector(`[data-review-extra-slot="${index}"]`);if(!slot||slot.dataset.reviewId!==item.id)return;
+  slot.classList.remove('loading');
+  slot.innerHTML=`<span>✨ En plus</span><p>${escHtml(text)}</p><small>${escHtml(state)}</small>`;
+}
+async function fetchReviewExtra(item,index){
+  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=normalizeFactText(q[3]);
+  if(!item.id||!q[0]||!correct||reviewFactLoading.has(item.id))return;
+  const exact=assessmentDeepDiveFacts[q[0]];if(exact){updateReviewExtraSlot(item,index,exact,'Complément local vérifié');return}
+  const cached=getReviewFactCache()[item.id];if(cached){updateReviewExtraSlot(item,index,cached,'Complément mémorisé');return}
+  const endpoint=String(window.CULTIVA_AI_ENDPOINT||'').trim();if(!endpoint){updateReviewExtraSlot(item,index,'Le fait complémentaire précis sera disponible lorsque le Deep Dive IA sera accessible.','IA indisponible');return}
+  reviewFactLoading.add(item.id);
+  try{
+    const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cat:item.cat,question:q[0],correct,note}),credentials:'omit',referrerPolicy:'no-referrer'});
+    if(!response.ok)throw new Error('AI endpoint '+response.status);
+    const data=await response.json(),text=typeof data.deepDive==='string'?data.deepDive.trim():'';
+    if(!text)throw new Error('Empty AI response');
+    const cleanText=text.slice(0,1200);saveReviewFact(item.id,cleanText);updateReviewExtraSlot(item,index,cleanText,'✨ Fait complémentaire précis');
+  }catch(e){
+    updateReviewExtraSlot(item,index,'Le fait complémentaire précis n’a pas pu être chargé. Le contexte ci-dessus reste disponible.','Réessaie à la prochaine ouverture');
+  }finally{reviewFactLoading.delete(item.id)}
+}
+function loadReviewExtras(items){
+  const queue=items.map((item,index)=>({item,index})).filter(({item})=>!reviewExtra(item));
+  if(!queue.length)return;
+  let cursor=0;const worker=async()=>{while(cursor<queue.length){const job=queue[cursor++];await fetchReviewExtra(job.item,job.index)}};
+  const workers=Array.from({length:Math.min(3,queue.length)},()=>worker());Promise.all(workers).catch(()=>{});
 }
 function resolveReviewMistake(id,rerender=true){
   const p=getProfile();if(!p)return false;
@@ -106,11 +147,16 @@ function resolveReviewMistake(id,rerender=true){
 function renderReviewCards(items){
   const content=document.querySelector('#reviewContent');if(!content)return;
   if(!items.length){content.innerHTML='<div class="review-empty"><b>Tout est clean ✨</b><p>Tu n’as plus d’erreur active à retravailler</p></div>';return;}
-  content.innerHTML=`<div class="review-facts-grid">${items.map((item,i)=>`<article class="review-knowledge-card"><div class="review-card-top"><span class="review-category">${categoryMeta[item.cat]||'✦'} ${escHtml(item.cat)}</span><span class="review-recency">#${i+1}</span></div><div class="review-fact-label">À retenir</div><p class="review-fact-main">${escHtml(reviewKnowledge(item))}</p><div class="review-extra"><span>💡 Connexion</span><p>${escHtml(reviewExtra(item))}</p></div></article>`).join('')}</div>`;
+  content.innerHTML=`<div class="review-facts-grid">${items.map((item,i)=>{const extra=reviewExtra(item);return `<article class="review-knowledge-card"><div class="review-card-top"><span class="review-category">${categoryMeta[item.cat]||'✦'} ${escHtml(item.cat)}</span><span class="review-recency">#${i+1}</span></div><section class="review-card-section review-remember"><span>🧠 Savoir</span><p>${escHtml(reviewKnowledge(item))}</p></section><section class="review-card-section review-context"><span>🗺️ Contexte</span><p>${escHtml(reviewContext(item))}</p></section><section class="review-extra${extra?'':' loading'}" data-review-extra-slot="${i}" data-review-id="${escHtml(item.id)}"><span>✨ En plus</span><p>${extra?escHtml(extra):'Je cherche un fait complémentaire précis lié à ce savoir…'}</p>${extra?'<small>Complément mémorisé</small>':'<small>Deep Dive · chargement</small>'}</section></article>`}).join('')}</div>`;
+  loadReviewExtras(items);
 }
 function startReviewSession(){
   const items=getReviewItems();
-  reviewQuizSession=shuffled(items.map(x=>({id:x.id,cat:x.cat,q:x.q})));reviewQuizIndex=0;reviewQuizCorrect=0;reviewQuizLocked=false;reviewQuizFinished=false;reviewQuizDisplay=[];
+  reviewQuizSession=shuffled(items.map(x=>({id:x.id,cat:x.cat,q:x.q})));reviewQuizIndex=0;reviewQuizCorrect=0;reviewQuizLocked=false;reviewQuizFinished=false;reviewQuizStarted=true;reviewQuizDisplay=[];
+}
+function startReviewQuiz(){
+  if(!getReviewItems().length)return;
+  startReviewSession();reviewTab='quiz';renderReviewPanel();
 }
 function openReviewCenter(){
   const modal=document.querySelector('#reviewModal');if(!modal)return;
@@ -125,17 +171,22 @@ function closeReviewCenter(){
 }
 function setReviewTab(tab){
   reviewTab=tab==='quiz'?'quiz':'cards';
-  if(reviewTab==='quiz'&&!reviewQuizSession.length&&!reviewQuizFinished)startReviewSession();
   renderReviewPanel();
 }
 function renderReviewQuiz(){
   const content=document.querySelector('#reviewContent');if(!content)return;
-  if(reviewQuizFinished){
-    const left=getReviewItems().length;
-    content.innerHTML=`<div class="review-quiz-summary"><div class="review-quiz-summary-icon">✓</div><h4>Session terminée</h4><p><b>${reviewQuizCorrect}</b> erreur${reviewQuizCorrect>1?'s':''} maîtrisée${reviewQuizCorrect>1?'s':''} · <b>${left}</b> encore à revoir</p>${left?'<button class="btn review-restart" data-action="review-restart">Remélanger et recommencer ↻</button>':'<div class="review-mastered">Pile vidée 🔥</div>'}</div>`;
+  const available=getReviewItems().length;
+  if(!reviewQuizStarted){
+    if(!available){content.innerHTML='<div class="review-empty"><b>Aucune erreur à tester 🎯</b><p>Fais quelques quiz, tes erreurs apparaîtront ici</p></div>';return;}
+    content.innerHTML=`<div class="review-quiz-intro"><div class="review-quiz-intro-icon">🎯</div><span class="intro-kicker">RAPPEL ACTIF</span><h4>Prêt à vider ta pile ?</h4><p>${available} erreur${available>1?'s':''} seront mélangée${available>1?'s':''} aléatoirement. Une bonne réponse retire immédiatement le savoir de Retravailler ; une mauvaise le garde pour une prochaine session.</p><button class="btn review-start-btn" data-action="review-start">START QUIZ →</button></div>`;
     return;
   }
-  if(!reviewQuizSession.length){content.innerHTML='<div class="review-empty"><b>Aucune erreur à tester 🎯</b><p>Fais quelques quiz, tes erreurs apparaîtront ici</p></div>';return;}
+  if(reviewQuizFinished){
+    const left=getReviewItems().length;
+    content.innerHTML=`<div class="review-quiz-summary"><div class="review-quiz-summary-icon">✓</div><h4>Session terminée</h4><p><b>${reviewQuizCorrect}</b> erreur${reviewQuizCorrect>1?'s':''} maîtrisée${reviewQuizCorrect>1?'s':''} · <b>${left}</b> encore à revoir</p>${left?'<button class="btn review-restart" data-action="review-restart">Refaire un quiz ↻</button>':'<div class="review-mastered">Pile vidée 🔥</div>'}</div>`;
+    return;
+  }
+  if(!reviewQuizSession.length){reviewQuizStarted=false;renderReviewQuiz();return;}
   const item=reviewQuizSession[reviewQuizIndex],q=item.q;
   if(!item||!q){reviewQuizFinished=true;renderReviewQuiz();return;}
   reviewQuizLocked=false;
@@ -157,7 +208,7 @@ function nextReviewQuestion(){
   if(reviewQuizIndex>=reviewQuizSession.length){reviewQuizFinished=true;touchActivity(0,1);renderReviewPanel();return;}
   renderReviewQuiz();
 }
-function restartReviewQuiz(){startReviewSession();reviewTab='quiz';renderReviewPanel()}
+function restartReviewQuiz(){startReviewQuiz()}
 function renderReviewPanel(){
   const panel=document.querySelector('#reviewPanel');if(!panel)return;const items=getReviewItems(),count=items.length;
   document.querySelectorAll('[data-review-count]').forEach(el=>el.textContent=count);
@@ -165,7 +216,7 @@ function renderReviewPanel(){
   const openBtn=panel.querySelector('[data-action="open-review"]');if(openBtn){openBtn.textContent=count?'Ouvrir →':'Voir l’espace →'}
   const cardsTab=document.querySelector('#reviewCardsTab'),quizTab=document.querySelector('#reviewQuizTab');
   if(cardsTab){cardsTab.classList.toggle('active',reviewTab==='cards');cardsTab.setAttribute('aria-selected',reviewTab==='cards'?'true':'false')}
-  if(quizTab){quizTab.classList.toggle('active',reviewTab==='quiz');quizTab.setAttribute('aria-selected',reviewTab==='quiz'?'true':'false');quizTab.disabled=!count&&!reviewQuizSession.length&&!reviewQuizFinished}
+  if(quizTab){quizTab.classList.toggle('active',reviewTab==='quiz');quizTab.setAttribute('aria-selected',reviewTab==='quiz'?'true':'false');quizTab.disabled=!count&&!reviewQuizStarted}
   const content=document.querySelector('#reviewContent');
   if(content){if(reviewTab==='quiz')renderReviewQuiz();else renderReviewCards(items)}
 }
@@ -324,6 +375,7 @@ document.addEventListener('click',e=>{
   else if(action==='open-review')openReviewCenter();
   else if(action==='close-review')closeReviewCenter();
   else if(action==='review-tab')setReviewTab(el.dataset.tab||'cards');
+  else if(action==='review-start')startReviewQuiz();
   else if(action==='review-answer')reviewAnswer(Number(el.dataset.index));
   else if(action==='review-next')nextReviewQuestion();
   else if(action==='review-restart')restartReviewQuiz();

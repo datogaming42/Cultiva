@@ -239,3 +239,23 @@ body.review-open{overflow:hidden}
 }
 @media(max-width:390px){.review-launch-main p{max-width:135px}.review-launch-actions .review-count{display:none}.review-open-btn{padding-left:11px;padding-right:11px}}
 .review-panel.review-launcher{flex-direction:row}
+
+/* === Retravailler V3: cartes plus riches + quiz sur lancement === */
+.review-knowledge-card{display:flex;flex-direction:column;gap:11px}
+.review-card-section{padding:12px 13px;border-radius:14px;border:1px solid #ece9f7;background:#fff}
+.review-card-section>span,.review-extra>span{display:block;font-size:10px;font-weight:900;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px}
+.review-card-section p,.review-extra p{margin:0!important;line-height:1.58!important}
+.review-remember{background:linear-gradient(135deg,#f3f0ff,#fff);border-color:#e7e1ff}
+.review-remember>span{color:#5f50b8}.review-remember p{font-size:14.5px;color:#332d49!important;font-weight:780}
+.review-context{background:#fbfbff}.review-context>span{color:#64708a}.review-context p{font-size:13.5px;color:#5f5a70!important}
+.review-extra{margin-top:0;padding:12px 13px;border-radius:14px;background:linear-gradient(135deg,#fff8e9,#fff);border:1px solid #f4e7c5}
+.review-extra>span{color:#9b6a11}.review-extra p{font-size:13.5px;color:#5e5546!important}.review-extra small{display:block;margin-top:7px;color:#9b927e;font-size:10.5px;font-weight:750}
+.review-extra.loading{background:#faf9ff;border-style:dashed;border-color:#dcd6ef}.review-extra.loading>span{color:#776aa7}.review-extra.loading p{color:#777188!important}.review-extra.loading small{color:#aaa4b7}
+.review-quiz-intro{max-width:620px;margin:16px auto;text-align:center;padding:34px 28px;border:1px solid #e9e5f6;border-radius:24px;background:linear-gradient(145deg,#faf8ff,#fff);box-shadow:0 8px 24px rgba(43,35,92,.06)}
+.review-quiz-intro-icon{width:64px;height:64px;margin:0 auto 13px;border-radius:20px;display:grid;place-items:center;font-size:30px;background:#eeeaff}
+.review-quiz-intro h4{margin:15px 0 9px;font-size:26px}.review-quiz-intro p{margin:0 auto 20px!important;max-width:520px;color:var(--muted)!important;font-size:14px;line-height:1.6!important}
+.review-start-btn{width:100%;min-height:52px;background:linear-gradient(135deg,var(--purple),var(--pink));color:#fff;font-size:15px}
+@media(max-width:600px){
+  .review-knowledge-card{gap:9px}.review-card-section,.review-extra{padding:11px 12px}.review-remember p{font-size:14px}.review-context p,.review-extra p{font-size:12.8px}
+  .review-quiz-intro{margin:4px auto;padding:25px 16px;border-radius:20px}.review-quiz-intro-icon{width:56px;height:56px;border-radius:18px;font-size:27px}.review-quiz-intro h4{font-size:22px}.review-quiz-intro p{font-size:13px}.review-start-btn{min-height:50px}
+}
