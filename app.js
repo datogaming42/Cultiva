@@ -587,7 +587,31 @@ function renderQuizQuestion(){
   document.querySelector('#quizAnswers').innerHTML=display.map((a,i)=>`<button class="answer" data-action="quiz-answer" data-index="${i}">${String.fromCharCode(65+i)} — ${escHtml(a.text)}</button>`).join('');
   document.querySelector('#explain').style.display='none';document.querySelector('#quizNext').style.display='none';
 }
-function answer(el,choice){if(quizLocked)return;quizLocked=true;const item=quizSession[quizIndex],q=item.q,display=window._quizDisplay||q[1].map((text,i)=>({text,correct:i===q[2]})),ok=!!display[choice].correct;markSeen(currentQuizCategory,q);if(ok)quizCorrect++;else recordMistake(currentQuizCategory,q);const buttons=[...document.querySelectorAll('#quizAnswers .answer')];buttons.forEach((b,i)=>{b.disabled=true;if(display[i]&&display[i].correct)b.classList.add('correct')});if(!ok)el.classList.add('wrong');const correct=display.find(x=>x.correct)?.text||q[1][q[2]],note=q[3]||`La bonne réponse est ${correct}`;currentLearnMore={cat:currentQuizCategory,question:q[0],correct,note};const ex=document.querySelector('#explain');ex.innerHTML=`<b>${ok?'✓ Clean !':'✕ Nope'}</b><br>${!ok?`Réponse : <strong>${escHtml(correct)}</strong><br>`:''}${detailedNoteHtml(currentQuizCategory,q[0],correct,note)}<button class="learn-more-btn" data-action="learn-more" data-target="quizDeepDive">En savoir plus →</button><div class="deep-dive" id="quizDeepDive"></div>`;ex.style.display='block';document.querySelector('#quizScore').textContent=`${quizCorrect} pts`;updateMastery(currentQuizCategory,ok,q[4]||2);const next=document.querySelector('#quizNext');next.textContent=quizIndex===quizSession.length-1?'Score →':'Next →';next.style.display='block'}
+
+function quizFeedbackDescription(item,correct,note){
+  const base=cleanReviewNote(note);
+  let context='';
+  try{context=normalizeFactText(localReviewContext(item))}catch(e){context=''}
+  const parts=[];
+  if(base)parts.push(base);
+  if(context){
+    const baseKey=sentenceKey(base),correctKey=sentenceKey(correct);
+    for(const sentence of splitReviewSentences(context)){
+      const key=sentenceKey(sentence);
+      if(!key||key===baseKey||baseKey.includes(key)||key.includes(baseKey))continue;
+      if(key===correctKey)continue;
+      parts.push(sentence);
+      if(parts.length>=2)break;
+    }
+  }
+  const merged=mergeFactParagraph(parts,2);
+  return merged||base||`La réponse correcte est ${correct}.`;
+}
+function quizFeedbackHtml(item,correct,note){
+  const description=quizFeedbackDescription(item,correct,note);
+  return `<div class="note-main">${escHtml(description)}</div><div class="note-context"><strong>À retenir</strong> · ${escHtml(correct)}</div>`;
+}
+function answer(el,choice){if(quizLocked)return;quizLocked=true;const item=quizSession[quizIndex],q=item.q,display=window._quizDisplay||q[1].map((text,i)=>({text,correct:i===q[2]})),ok=!!display[choice].correct;markSeen(currentQuizCategory,q);if(ok)quizCorrect++;else recordMistake(currentQuizCategory,q);const buttons=[...document.querySelectorAll('#quizAnswers .answer')];buttons.forEach((b,i)=>{b.disabled=true;if(display[i]&&display[i].correct)b.classList.add('correct')});if(!ok)el.classList.add('wrong');const correct=display.find(x=>x.correct)?.text||q[1][q[2]],note=q[3]||`La bonne réponse est ${correct}`;currentLearnMore={cat:currentQuizCategory,question:q[0],correct,note};const ex=document.querySelector('#explain');ex.innerHTML=`<b>${ok?'✓ Clean !':'✕ Nope'}</b><br>${!ok?`Réponse : <strong>${escHtml(correct)}</strong><br>`:''}${quizFeedbackHtml(item,correct,note)}<button class="learn-more-btn" data-action="learn-more" data-target="quizDeepDive">En savoir plus →</button><div class="deep-dive" id="quizDeepDive"></div>`;ex.style.display='block';document.querySelector('#quizScore').textContent=`${quizCorrect} pts`;updateMastery(currentQuizCategory,ok,q[4]||2);const next=document.querySelector('#quizNext');next.textContent=quizIndex===quizSession.length-1?'Score →':'Next →';next.style.display='block'}
 function nextQuizQuestion(){quizIndex++;if(quizIndex<quizSession.length){renderQuizQuestion();return}const pct=Math.round(quizCorrect/quizSession.length*100);document.querySelector('#quizProgress').style.width='100%';document.querySelector('#quizQuestion').textContent=currentQuizMode==='review'?'Révision terminée ↺':'Run terminé 🔥';document.querySelector('#quizAnswers').innerHTML='';document.querySelector('#explain').innerHTML=`<b>${quizCorrect}/${quizSession.length} bonnes — ${pct}%</b><br>${currentQuizMode==='review'?'Erreurs retravaillées 🧠':'XP mis à jour ⚡'}`;document.querySelector('#explain').style.display='block';touchActivity(0,1);const next=document.querySelector('#quizNext');next.textContent='Voir mon level';next.dataset.action='close-quiz';next.style.display='block'}
 function closeQuiz(){document.querySelector('#modal').classList.remove('show');document.querySelector('#quizNext').dataset.action='next-quiz';renderProfile();if(currentCategoryPage&&document.querySelector('#categoryPage').classList.contains('show'))openCategory(currentCategoryPage)}
 // Fallback anti-clickjacking pour hébergement statique (les vraies protections doivent idéalement être des en-têtes HTTP).
