@@ -92,27 +92,19 @@ function cleanReviewNote(value){
     .trim();
 }
 function reviewContext(item){
-  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=cleanReviewNote(q[3]),difficulty=Number(q[4])||2;
-  const openings={
-    'Histoire':'Ce repère prend davantage de sens lorsqu’on le replace dans sa chronologie et dans les transformations de son époque.',
-    'Géographie':'Le lieu, son environnement régional et ses voisins permettent de replacer ce fait dans un ensemble géographique plus large.',
-    'Économie':'Le mécanisme devient plus clair lorsqu’on le relie aux variables qui évoluent autour de lui et à leurs effets.',
-    'Finance':'Ce point s’inscrit dans la relation entre rendement, risque, horizon et sensibilité aux conditions de marché.',
-    'Politique & institutions':'Ce repère s’inscrit dans un ensemble de pouvoirs, de contre-pouvoirs et de règles institutionnelles.',
-    'Sciences':'Le phénomène se comprend mieux lorsqu’on relie le terme au mécanisme physique ou biologique qui l’explique.',
-    'Littérature':'Auteur, œuvre, époque et courant forment ici un même réseau de repères culturels.',
-    'Arts & culture':'L’œuvre ou la technique prend son sens à travers son créateur, son époque et le mouvement auquel elle se rattache.',
-    'Philosophie':'Le concept gagne à être replacé dans le vocabulaire et le problème philosophique auquel il répond.',
-    'Technologie':'Ce repère s’inscrit dans un fonctionnement concret : représentation de l’information, calcul, stockage ou réseau.',
-    'Environnement':'Le phénomène s’insère dans un système de causes, d’effets et de rétroactions à différentes échelles.',
-    'Cinéma & musique':'Créateur, œuvre, date et style permettent de replacer ce fait dans un ensemble culturel cohérent.'
-  };
-  const endings={1:'C’est un repère de base auquel se rattachent beaucoup de notions voisines.',2:'Il sert ensuite de point de liaison avec plusieurs notions du même thème.',3:'Ce détail plus avancé permet de distinguer des notions proches qui sont faciles à confondre.'};
-  let fact=note;
-  if(!fact&&correct)fact=`Dans ce sujet, ${correct} apparaît comme l’un des éléments du repère étudié.`;
-  if(!fact)fact='Plusieurs éléments du thème se répondent ici et méritent d’être replacés dans leur contexte.';
-  const opener=openings[item.cat]||'Ce fait devient plus facile à situer lorsqu’on le replace dans son contexte et qu’on le relie aux notions voisines.';
-  return `${opener} ${fact} ${endings[difficulty]||endings[2]}`;
+  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=cleanReviewNote(q[3]);
+
+  // Les cartes « À revoir » doivent commencer immédiatement par un fait concret.
+  // Aucun préambule ou commentaire pédagogique générique n'est ajouté avant/après.
+  if(note)return note;
+
+  // Pour les rares anciennes erreurs sans note, on privilégie un complément précis
+  // déjà rédigé pour cette question plutôt qu'une phrase passe-partout.
+  const specific=normalizeFactText(assessmentDeepDiveFacts[q[0]]);
+  if(specific)return specific;
+
+  // Dernier recours : conserver le savoir lui-même sans l'enrober d'un faux contexte.
+  return correct;
 }
 const REVIEW_FACT_CACHE_KEY='cultivaReviewFactsV2';
 const reviewFactLoading=new Set();
