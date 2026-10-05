@@ -83,16 +83,36 @@ function recordMistake(cat,q){let p=getProfile();if(!p)return;p.wrongHistory=pus
 function getReviewItems(){const p=getProfile();return ((p&&p.wrongHistory)||[]).filter(x=>x&&x.cat&&Array.isArray(x.q)).slice(0,20)}
 let reviewTab='cards',reviewQuizSession=[],reviewQuizIndex=0,reviewQuizCorrect=0,reviewQuizLocked=false,reviewQuizFinished=false,reviewQuizStarted=false,reviewQuizDisplay=[];
 function normalizeFactText(value){return String(value||'').replace(/\s+/g,' ').trim()}
-function reviewKnowledge(item){
-  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]);
-  if(!correct)return 'Un repère important est à consolider ici.';
-  return `Le savoir clé à mémoriser est ${correct}.`;
+function cleanReviewNote(value){
+  return normalizeFactText(value)
+    .replace(/^(?:à retenir|a retenir)\s*[:·—-]\s*/i,'')
+    .replace(/^(?:la )?(?:bonne|correcte) réponse (?:est|:)\s*/i,'')
+    .replace(/^le savoir cl[ée] à mémoris(?:er|é) est\s*/i,'')
+    .replace(/^l[’']information essentielle est\s*/i,'')
+    .trim();
 }
 function reviewContext(item){
-  const q=item.q||[],note=normalizeFactText(q[3]),difficulty=Number(q[4])||2;
-  const level=difficulty===1?'un repère fondamental':difficulty===3?'un repère plus avancé':'un repère intermédiaire';
-  if(note)return `${note} Dans cette catégorie, c’est ${level} qui sert de point d’ancrage pour les notions voisines.`;
-  return `Ce savoir fait partie des repères ${difficulty===1?'fondamentaux':difficulty===3?'avancés':'intermédiaires'} de ${item.cat}. Il sert de point d’ancrage pour relier d’autres faits du même thème.`;
+  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=cleanReviewNote(q[3]),difficulty=Number(q[4])||2;
+  const openings={
+    'Histoire':'Ce repère prend davantage de sens lorsqu’on le replace dans sa chronologie et dans les transformations de son époque.',
+    'Géographie':'Le lieu, son environnement régional et ses voisins permettent de replacer ce fait dans un ensemble géographique plus large.',
+    'Économie':'Le mécanisme devient plus clair lorsqu’on le relie aux variables qui évoluent autour de lui et à leurs effets.',
+    'Finance':'Ce point s’inscrit dans la relation entre rendement, risque, horizon et sensibilité aux conditions de marché.',
+    'Politique & institutions':'Ce repère s’inscrit dans un ensemble de pouvoirs, de contre-pouvoirs et de règles institutionnelles.',
+    'Sciences':'Le phénomène se comprend mieux lorsqu’on relie le terme au mécanisme physique ou biologique qui l’explique.',
+    'Littérature':'Auteur, œuvre, époque et courant forment ici un même réseau de repères culturels.',
+    'Arts & culture':'L’œuvre ou la technique prend son sens à travers son créateur, son époque et le mouvement auquel elle se rattache.',
+    'Philosophie':'Le concept gagne à être replacé dans le vocabulaire et le problème philosophique auquel il répond.',
+    'Technologie':'Ce repère s’inscrit dans un fonctionnement concret : représentation de l’information, calcul, stockage ou réseau.',
+    'Environnement':'Le phénomène s’insère dans un système de causes, d’effets et de rétroactions à différentes échelles.',
+    'Cinéma & musique':'Créateur, œuvre, date et style permettent de replacer ce fait dans un ensemble culturel cohérent.'
+  };
+  const endings={1:'C’est un repère de base auquel se rattachent beaucoup de notions voisines.',2:'Il sert ensuite de point de liaison avec plusieurs notions du même thème.',3:'Ce détail plus avancé permet de distinguer des notions proches qui sont faciles à confondre.'};
+  let fact=note;
+  if(!fact&&correct)fact=`Dans ce sujet, ${correct} apparaît comme l’un des éléments du repère étudié.`;
+  if(!fact)fact='Plusieurs éléments du thème se répondent ici et méritent d’être replacés dans leur contexte.';
+  const opener=openings[item.cat]||'Ce fait devient plus facile à situer lorsqu’on le replace dans son contexte et qu’on le relie aux notions voisines.';
+  return `${opener} ${fact} ${endings[difficulty]||endings[2]}`;
 }
 const REVIEW_FACT_CACHE_KEY='cultivaReviewFactsV2';
 const reviewFactLoading=new Set();
@@ -147,7 +167,7 @@ function resolveReviewMistake(id,rerender=true){
 function renderReviewCards(items){
   const content=document.querySelector('#reviewContent');if(!content)return;
   if(!items.length){content.innerHTML='<div class="review-empty"><b>Tout est clean ✨</b><p>Tu n’as plus d’erreur active à retravailler</p></div>';return;}
-  content.innerHTML=`<div class="review-facts-grid">${items.map((item,i)=>{const extra=reviewExtra(item);return `<article class="review-knowledge-card"><div class="review-card-top"><span class="review-category">${categoryMeta[item.cat]||'✦'} ${escHtml(item.cat)}</span><span class="review-recency">#${i+1}</span></div><section class="review-card-section review-remember"><span>🧠 Savoir</span><p>${escHtml(reviewKnowledge(item))}</p></section><section class="review-card-section review-context"><span>🗺️ Contexte</span><p>${escHtml(reviewContext(item))}</p></section><section class="review-extra${extra?'':' loading'}" data-review-extra-slot="${i}" data-review-id="${escHtml(item.id)}"><span>✨ En plus</span><p>${extra?escHtml(extra):'Je cherche un fait complémentaire précis lié à ce savoir…'}</p>${extra?'<small>Complément mémorisé</small>':'<small>Deep Dive · chargement</small>'}</section></article>`}).join('')}</div>`;
+  content.innerHTML=`<div class="review-facts-grid">${items.map((item,i)=>{const extra=reviewExtra(item);return `<article class="review-knowledge-card"><div class="review-card-top"><span class="review-category">${categoryMeta[item.cat]||'✦'} ${escHtml(item.cat)}</span><span class="review-recency">#${i+1}</span></div><section class="review-card-section review-context review-context-main"><span>🗺️ Contexte</span><p>${escHtml(reviewContext(item))}</p></section><section class="review-extra${extra?'':' loading'}" data-review-extra-slot="${i}" data-review-id="${escHtml(item.id)}"><span>✨ En plus</span><p>${extra?escHtml(extra):'Je cherche un fait complémentaire précis lié à ce savoir…'}</p>${extra?'<small>Complément mémorisé</small>':'<small>Deep Dive · chargement</small>'}</section></article>`}).join('')}</div>`;
   loadReviewExtras(items);
 }
 function startReviewSession(){

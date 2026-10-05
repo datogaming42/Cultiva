@@ -259,3 +259,9 @@ body.review-open{overflow:hidden}
   .review-knowledge-card{gap:9px}.review-card-section,.review-extra{padding:11px 12px}.review-remember p{font-size:14px}.review-context p,.review-extra p{font-size:12.8px}
   .review-quiz-intro{margin:4px auto;padding:25px 16px;border-radius:20px}.review-quiz-intro-icon{width:56px;height:56px;border-radius:18px;font-size:27px}.review-quiz-intro h4{font-size:22px}.review-quiz-intro p{font-size:13px}.review-start-btn{min-height:50px}
 }
+
+/* === Retravailler V4: la réponse est intégrée au contexte, sans bloc de révélation === */
+.review-context-main{padding:14px 15px;background:linear-gradient(145deg,#fafaff,#fff);border-color:#e8e5f4}
+.review-context-main>span{color:#64708a}
+.review-context-main p{font-size:14px!important;line-height:1.72!important;color:#4f4a60!important;font-weight:650}
+@media(max-width:600px){.review-context-main{padding:12px 13px}.review-context-main p{font-size:13.2px!important;line-height:1.65!important}}
