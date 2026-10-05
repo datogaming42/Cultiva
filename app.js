@@ -91,61 +91,85 @@ function cleanReviewNote(value){
     .replace(/^l[’']information essentielle est\s*/i,'')
     .trim();
 }
-function reviewContext(item){
-  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=cleanReviewNote(q[3]);
-
-  // Les cartes « À revoir » doivent commencer immédiatement par un fait concret.
-  // Aucun préambule ou commentaire pédagogique générique n'est ajouté avant/après.
-  if(note)return note;
-
-  // Pour les rares anciennes erreurs sans note, on privilégie un complément précis
-  // déjà rédigé pour cette question plutôt qu'une phrase passe-partout.
-  const specific=normalizeFactText(assessmentDeepDiveFacts[q[0]]);
-  if(specific)return specific;
-
-  // Dernier recours : conserver le savoir lui-même sans l'enrober d'un faux contexte.
-  return correct;
+function sentenceKey(value){
+  return normalizeFactText(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
 }
-const REVIEW_FACT_CACHE_KEY='cultivaReviewFactsV2';
-const reviewFactLoading=new Set();
-function getReviewFactCache(){try{return JSON.parse(storage.getItem(REVIEW_FACT_CACHE_KEY)||'{}')}catch{return {}}}
-function saveReviewFact(id,text){
-  if(!id||!text)return;const cache=getReviewFactCache();cache[id]=String(text).trim();
+function mergeFactParagraph(parts,maxSentences=4){
+  const seen=[];const out=[];
+  for(const raw of parts){
+    const text=normalizeFactText(raw);if(!text)continue;
+    const chunks=text.match(/[^.!?…]+[.!?…]?/g)||[text];
+    for(let chunk of chunks){
+      chunk=normalizeFactText(chunk);if(!chunk)continue;
+      if(!/[.!?…]$/.test(chunk))chunk+='.';
+      const key=sentenceKey(chunk);if(key.length<8)continue;
+      const duplicate=seen.some(x=>x===key||x.includes(key)||key.includes(x));
+      if(duplicate)continue;
+      seen.push(key);out.push(chunk);
+      if(out.length>=maxSentences)return out.join(' ');
+    }
+  }
+  return out.join(' ');
+}
+const REVIEW_CARD_CACHE_KEY='cultivaReviewCardsV3';
+const reviewCardLoading=new Set();
+function getReviewCardCache(){try{return JSON.parse(storage.getItem(REVIEW_CARD_CACHE_KEY)||'{}')}catch{return {}}}
+function saveReviewCard(id,context,extra){
+  if(!id)return;const cache=getReviewCardCache();cache[id]={context:normalizeFactText(context),extra:normalizeFactText(extra)};
   const entries=Object.entries(cache);if(entries.length>120){for(const [key] of entries.slice(0,entries.length-120))delete cache[key]}
-  storage.setItem(REVIEW_FACT_CACHE_KEY,JSON.stringify(cache));
+  storage.setItem(REVIEW_CARD_CACHE_KEY,JSON.stringify(cache));
+}
+function localReviewContext(item){
+  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=cleanReviewNote(q[3]);
+  const exact=normalizeFactText(assessmentDeepDiveFacts[q[0]]);
+  const merged=mergeFactParagraph([note,exact],4);
+  return merged||correct;
+}
+function reviewContext(item){
+  const cached=getReviewCardCache()[item.id];
+  return normalizeFactText(cached?.context)||localReviewContext(item);
 }
 function reviewExtra(item){
-  const q=item.q||[],exact=assessmentDeepDiveFacts[q[0]];
-  if(exact)return exact;
-  return getReviewFactCache()[item.id]||'';
+  const cached=getReviewCardCache()[item.id];
+  return normalizeFactText(cached?.extra)||'';
+}
+function updateReviewContextSlot(item,index,text){
+  const slot=document.querySelector(`[data-review-context-slot="${index}"]`);if(!slot||slot.dataset.reviewId!==item.id||!text)return;
+  slot.textContent=text;
 }
 function updateReviewExtraSlot(item,index,text,state='✨ Fait complémentaire'){
   const slot=document.querySelector(`[data-review-extra-slot="${index}"]`);if(!slot||slot.dataset.reviewId!==item.id)return;
   slot.classList.remove('loading');
-  slot.innerHTML=`<span>✨ En plus</span><p>${escHtml(text)}</p><small>${escHtml(state)}</small>`;
+  if(text)slot.innerHTML=`<span>✨ En plus</span><p>${escHtml(text)}</p><small>${escHtml(state)}</small>`;
+  else slot.innerHTML='<span>✨ En plus</span><p>Complément indisponible pour le moment.</p><small>Le contexte principal reste utilisable</small>';
 }
-async function fetchReviewExtra(item,index){
-  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=normalizeFactText(q[3]);
-  if(!item.id||!q[0]||!correct||reviewFactLoading.has(item.id))return;
-  const exact=assessmentDeepDiveFacts[q[0]];if(exact){updateReviewExtraSlot(item,index,exact,'Complément local vérifié');return}
-  const cached=getReviewFactCache()[item.id];if(cached){updateReviewExtraSlot(item,index,cached,'Complément mémorisé');return}
-  const endpoint=String(window.CULTIVA_AI_ENDPOINT||'').trim();if(!endpoint){updateReviewExtraSlot(item,index,'Le fait complémentaire précis sera disponible lorsque le Deep Dive IA sera accessible.','IA indisponible');return}
-  reviewFactLoading.add(item.id);
+async function fetchReviewCard(item,index){
+  const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=cleanReviewNote(q[3]);
+  if(!item.id||!q[0]||!correct||reviewCardLoading.has(item.id))return;
+  const cached=getReviewCardCache()[item.id];
+  if(cached?.context&&cached?.extra){updateReviewContextSlot(item,index,cached.context);updateReviewExtraSlot(item,index,cached.extra,'Complément mémorisé');return}
+  const endpoint=String(window.CULTIVA_AI_ENDPOINT||'').trim();
+  if(!endpoint){updateReviewExtraSlot(item,index,'','IA indisponible');return}
+  reviewCardLoading.add(item.id);
   try{
-    const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cat:item.cat,question:q[0],correct,note}),credentials:'omit',referrerPolicy:'no-referrer'});
+    const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'review-card',cat:item.cat,question:q[0],correct,note}),credentials:'omit',referrerPolicy:'no-referrer'});
     if(!response.ok)throw new Error('AI endpoint '+response.status);
-    const data=await response.json(),text=typeof data.deepDive==='string'?data.deepDive.trim():'';
-    if(!text)throw new Error('Empty AI response');
-    const cleanText=text.slice(0,1200);saveReviewFact(item.id,cleanText);updateReviewExtraSlot(item,index,cleanText,'✨ Fait complémentaire précis');
+    const data=await response.json();
+    const context=normalizeFactText(data.reviewContext||data.context);
+    const extra=normalizeFactText(data.deepDive||data.extra);
+    if(!context)throw new Error('Empty review context');
+    saveReviewCard(item.id,context,extra);
+    updateReviewContextSlot(item,index,context);
+    updateReviewExtraSlot(item,index,extra,'✨ Fait complémentaire précis');
   }catch(e){
-    updateReviewExtraSlot(item,index,'Le fait complémentaire précis n’a pas pu être chargé. Le contexte ci-dessus reste disponible.','Réessaie à la prochaine ouverture');
-  }finally{reviewFactLoading.delete(item.id)}
+    updateReviewExtraSlot(item,index,'','Réessaie à la prochaine ouverture');
+  }finally{reviewCardLoading.delete(item.id)}
 }
-function loadReviewExtras(items){
-  const queue=items.map((item,index)=>({item,index})).filter(({item})=>!reviewExtra(item));
+function loadReviewCards(items){
+  const queue=items.map((item,index)=>({item,index})).filter(({item})=>{const c=getReviewCardCache()[item.id];return !(c?.context&&c?.extra)});
   if(!queue.length)return;
-  let cursor=0;const worker=async()=>{while(cursor<queue.length){const job=queue[cursor++];await fetchReviewExtra(job.item,job.index)}};
-  const workers=Array.from({length:Math.min(3,queue.length)},()=>worker());Promise.all(workers).catch(()=>{});
+  let cursor=0;const worker=async()=>{while(cursor<queue.length){const job=queue[cursor++];await fetchReviewCard(job.item,job.index)}};
+  const workers=Array.from({length:Math.min(2,queue.length)},()=>worker());Promise.all(workers).catch(()=>{});
 }
 function resolveReviewMistake(id,rerender=true){
   const p=getProfile();if(!p)return false;
@@ -159,8 +183,8 @@ function resolveReviewMistake(id,rerender=true){
 function renderReviewCards(items){
   const content=document.querySelector('#reviewContent');if(!content)return;
   if(!items.length){content.innerHTML='<div class="review-empty"><b>Tout est clean ✨</b><p>Tu n’as plus d’erreur active à retravailler</p></div>';return;}
-  content.innerHTML=`<div class="review-facts-grid">${items.map((item,i)=>{const extra=reviewExtra(item);return `<article class="review-knowledge-card"><div class="review-card-top"><span class="review-category">${categoryMeta[item.cat]||'✦'} ${escHtml(item.cat)}</span><span class="review-recency">#${i+1}</span></div><section class="review-card-section review-context review-context-main"><span>🗺️ Contexte</span><p>${escHtml(reviewContext(item))}</p></section><section class="review-extra${extra?'':' loading'}" data-review-extra-slot="${i}" data-review-id="${escHtml(item.id)}"><span>✨ En plus</span><p>${extra?escHtml(extra):'Je cherche un fait complémentaire précis lié à ce savoir…'}</p>${extra?'<small>Complément mémorisé</small>':'<small>Deep Dive · chargement</small>'}</section></article>`}).join('')}</div>`;
-  loadReviewExtras(items);
+  content.innerHTML=`<div class="review-facts-grid">${items.map((item,i)=>{const extra=reviewExtra(item);return `<article class="review-knowledge-card"><div class="review-card-top"><span class="review-category">${categoryMeta[item.cat]||'✦'} ${escHtml(item.cat)}</span><span class="review-recency">#${i+1}</span></div><section class="review-card-section review-context review-context-main"><span>🗺️ Contexte</span><p data-review-context-slot="${i}" data-review-id="${escHtml(item.id)}">${escHtml(reviewContext(item))}</p></section><section class="review-extra${extra?'':' loading'}" data-review-extra-slot="${i}" data-review-id="${escHtml(item.id)}"><span>✨ En plus</span><p>${extra?escHtml(extra):'Enrichissement factuel en cours…'}</p>${extra?'<small>Complément mémorisé</small>':'<small>Deep Dive · chargement</small>'}</section></article>`}).join('')}</div>`;
+  loadReviewCards(items);
 }
 function startReviewSession(){
   const items=getReviewItems();
