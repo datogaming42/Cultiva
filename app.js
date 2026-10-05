@@ -175,8 +175,10 @@ function updateReviewContextSlot(item,index,text){
 function updateReviewExtraSlot(item,index,text,state='✨ Fait complémentaire'){
   const slot=document.querySelector(`[data-review-extra-slot="${index}"]`);if(!slot||slot.dataset.reviewId!==item.id)return;
   slot.classList.remove('loading');
-  if(text)slot.innerHTML=`<span>✨ En plus</span><p>${escHtml(text)}</p><small>${escHtml(state)}</small>`;
-  else slot.innerHTML='<span>✨ En plus</span><p>Le contexte ci-dessus contient déjà les faits locaux disponibles pour ce sujet.</p><small>Contexte local</small>';
+  const clean=normalizeFactText(text);
+  if(!clean){slot.hidden=true;slot.innerHTML='';return}
+  slot.hidden=false;
+  slot.innerHTML=`<span>✨ En plus</span><p>${escHtml(clean)}</p><small>${escHtml(state)}</small>`;
 }
 async function fetchReviewCard(item,index){
   const q=item.q||[],answers=Array.isArray(q[1])?q[1]:[],correct=normalizeFactText(answers[q[2]]),note=cleanReviewNote(q[3]);
@@ -221,7 +223,7 @@ function resolveReviewMistake(id,rerender=true){
 function renderReviewCards(items){
   const content=document.querySelector('#reviewContent');if(!content)return;
   if(!items.length){content.innerHTML='<div class="review-empty"><b>Tout est clean ✨</b><p>Tu n’as plus d’erreur active à retravailler</p></div>';return;}
-  content.innerHTML=`<div class="review-facts-grid">${items.map((item,i)=>{const extra=reviewExtra(item);return `<article class="review-knowledge-card"><div class="review-card-top"><span class="review-category">${categoryMeta[item.cat]||'✦'} ${escHtml(item.cat)}</span><span class="review-recency">#${i+1}</span></div><section class="review-card-section review-context review-context-main"><span>🗺️ Contexte</span><p data-review-context-slot="${i}" data-review-id="${escHtml(item.id)}">${escHtml(reviewContext(item))}</p></section><section class="review-extra${extra?'':' loading'}" data-review-extra-slot="${i}" data-review-id="${escHtml(item.id)}"><span>✨ En plus</span><p>${extra?escHtml(extra):'Enrichissement factuel en cours…'}</p>${extra?'<small>Complément mémorisé</small>':'<small>Deep Dive · chargement</small>'}</section></article>`}).join('')}</div>`;
+  content.innerHTML=`<div class="review-facts-grid">${items.map((item,i)=>{const extra=reviewExtra(item);return `<article class="review-knowledge-card"><div class="review-card-top"><span class="review-category">${categoryMeta[item.cat]||'✦'} ${escHtml(item.cat)}</span><span class="review-recency">#${i+1}</span></div><section class="review-card-section review-context review-context-main"><span>🗺️ Contexte</span><p data-review-context-slot="${i}" data-review-id="${escHtml(item.id)}">${escHtml(reviewContext(item))}</p></section><section class="review-extra" data-review-extra-slot="${i}" data-review-id="${escHtml(item.id)}"${extra?'':' hidden'}>${extra?`<span>✨ En plus</span><p>${escHtml(extra)}</p><small>Complément local</small>`:''}</section></article>`}).join('')}</div>`;
   loadReviewCards(items);
 }
 function startReviewSession(){
